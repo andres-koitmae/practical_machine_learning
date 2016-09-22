@@ -1,0 +1,115 @@
+---
+title: "Activity Quality Prediction"
+author: "Andres "
+date: "Thursday, September 21, 2016"
+output: html_document
+---
+
+## Backround
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Executive Summary
+
+Weight lifting dataset was used to created a model where measurment result were used to predict the quality of the dataset. Final model used Gradient Boosting Machine (gbm) and achieved ~97% precision in classifing exercise quality,
+
+## Getting data
+
+````{r, echo=FALSE, message=FALSE}
+library(caret)
+set.seed(10203)
+````
+
+Training & test dataset download
+
+````{r}
+
+train_url <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+test_url <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+train_filename <- 'pml-training.csv'
+test_filename <- 'pml-testing.csv'
+
+# If file does not exist download it into current working directory
+
+if(!file.exists(test_filename))
+    {
+    download.file(test_url, test_filename)
+    }
+
+if(!file.exists(train_filename))
+    {
+    download.file(train_url, train_filename)
+    }
+````
+Read in test and  training dataset and make first insight.
+
+````{r}
+df_training <- read.csv(train_filename, sep = ',', header = TRUE, na.strings=c("NA",""))
+df_testing <- read.csv(test_filename, sep = ',', header = TRUE, na.strings=c("NA",""))
+dim(df_training)
+dim(df_testing)
+````
+There are 19622 observations of 160 variables in training dataset and 20 observations and 160 variables in testing dataset.
+
+## Cleaning data
+
+Let's remove preditctors which does not describe the activity (rowid 'X' and all timestamp columns, username and _window columns which describe time window (1s of data) and not exercise).
+
+````{r}
+rm_cols_train <- names(df_training) %in% c('X','raw_timestamp_part_1','raw_timestamp_part_2','cvtd_timestamp','user_name', 'new_window','num_window')
+rm_cols_test <- names(df_testing) %in% c('X','raw_timestamp_part_1','raw_timestamp_part_2','cvtd_timestamp','user_name','new_window','num_window')
+df_training <- df_training[!rm_cols_train]
+df_testing <- df_testing[!rm_cols_test]
+#summary(df_training)
+````
+
+As we can see from summary there are lots of NA values included. Let's remove all column which have NA values.
+
+````{r}
+df_training_na <- df_training[colSums(is.na(df_training)) == 0]
+df_testing_na <- df_testing[colSums(is.na(df_testing)) == 0]
+````
+
+Last step of data cleaning is to get rid of near zero variance variables. Let's check whether there are such columns in our dataset
+
+````{r}
+nearZeroVar(df_training_na)
+nearZeroVar(df_testing_na)
+df_training_clean <- df_training_na
+df_testing_clean <- df_testing_na
+````
+
+There were no near zero variance variables in data set. Data cleaning ends here. Summary:
+
+There are `r dim(df_training_clean)[1]` observations of `r  dim(df_training_clean)[2]` variables in clean training dataset and  `r dim(df_testing_clean)[1]` observations of  `r  dim(df_training_clean)[2]` varibales in clean testing dataset.
+
+## Data Splitting
+
+Training dataset is split into two dataset (70% of data into training dataset and 30% into validation dataset) which enables to perform cross-validations step in our research.
+
+
+````{r}
+inTrain <- createDataPartition(df_training_clean$classe, p=0.7, list = FALSE)
+training <- df_training_clean [inTrain,]
+validation <- df_training_clean [-inTrain,]
+````
+## Model Fitting
+
+Our task is to classify data (predict into which class every observation belongs) and we choose Gradient Boosting Machine for that task.
+
+````{r, eval=FALSE}
+model_gbm <- train(classe~., data=training, method = 'gbm')
+````
+
+When model is ready prediction on validation dataset is made.
+
+````{r}
+prediction_gbm <- predict(model_gbm,validation)
+confusionMatrix(prediction_gbm, validation$classe)
+````
+The result of validation show that our model accuracy is 0.9895 (confidence interval 0.9865, 0.9919).
+List of top 10 most important variables
+
+````{r}
+plot(varImp(model_gbm), top = 10)
+````
